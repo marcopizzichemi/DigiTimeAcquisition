@@ -10,10 +10,19 @@
 * the parameter SyncMode. See UserParams.c for more details
 */
 
+// TODO
+// 0 - testing of ALL with boards
+// 1- write registers from config to specific modules - DONE
+// 2- implement TTT control for multi boards
+// 3- active channels, groups etc
+// 4 - what is Tt?
+// 5 - SetSyncMode, various FIXME
+
 #include <stdio.h>
 #include <math.h>
 #include <float.h>
 #include <CAENDigitizer.h>
+#include <assert.h>
 
 #include "acquisition.h"
 #include "X742CorrectionRoutines.h"
@@ -78,12 +87,40 @@ long get_time()
 
 
 /* ============================================================================== */
-int ConfigureDigitizers(int handle[2], CAEN_DGTZ_BoardInfo_t Binfo[2], UserParams_t Params)
+int ConfigureDigitizers(std::vector<int> handle, std::vector<CAEN_DGTZ_BoardInfo_t> Binfo, UserParams_t Params, ConfigFile& config)
 {
-  int i, ret = 0;
+  int ret = 0;
   uint32_t d32;
 
-  for(i=0; i<2; i++) {
+  //read ConfigFile generic register writes
+  std::vector<uint32_t> values,addresses;
+  std::vector<int> write_handle;
+  std::string values_s,addresses_s,write_handle_s;
+  std::vector<std::string> values_f,addresses_f,write_handle_f;
+
+  write_handle_s = config.read<std::string>("board","");
+  addresses_s = config.read<std::string>("address","");
+  values_s = config.read<std::string>("value","");
+
+  config.split( values_f, values_s, "," );
+  config.split( addresses_f, addresses_s, "," );
+  config.split( write_handle_f, write_handle_s, "," );
+
+  assert( (values_f == addresses_f) && (values_f == write_handle_f) );
+
+  for(unsigned int i = 0 ; i < values_f.size() ; i++)
+  {
+    //trim strings
+    config.trim(values_f[i]);
+    config.trim(addresses_f[i]);
+    config.trim(write_handle_f[i]);
+    values.push_back((uint32_t) strtol(values_f[i].c_str(), NULL, 0) );
+    addresses.push_back((uint32_t) strtol(addresses_f[i].c_str(), NULL, 0) );
+    write_handle.push_back((uint32_t) strtol(write_handle_f[i].c_str(), NULL, 0) );
+  }
+
+
+  for(unsigned int i=0; i<Params.NumOfDigitizers; i++) {
     /* Reset all board registers */
     ret |= CAEN_DGTZ_Reset(handle[i]);
 
@@ -101,7 +138,7 @@ int ConfigureDigitizers(int handle[2], CAEN_DGTZ_BoardInfo_t Binfo[2], UserParam
 
     //     gr=Params.RefChannel[i]/8;
     //     ret |= CAEN_DGTZ_SetGroupEnableMask(handle[i], 1<<gr);
-    ret |= CAEN_DGTZ_SetGroupEnableMask(handle[i], 0x000F);
+    ret |= CAEN_DGTZ_SetGroupEnableMask(handle[i], 0x000F);   // FIXME - let user choose which groups are enabled, run following on groups enabled
     int gr,ch;
     for(gr = 0 ; gr < 4 ; gr++)
     {
@@ -124,9 +161,13 @@ int ConfigureDigitizers(int handle[2], CAEN_DGTZ_BoardInfo_t Binfo[2], UserParam
 
     //     setting the TR DC OFFSET and TR TRESHOLD
     //TR DC OFFSET for nim signals
-    ret |= CAEN_DGTZ_WriteRegister(handle[i],0x10DC,0x8000); //offset
+    // ret |= CAEN_DGTZ_WriteRegister(handle[i],0x10DC,0x8000); //offset //
     // TR THRESHOLD for nim signals
-    ret |= CAEN_DGTZ_WriteRegister(handle[i],0x10D4,0x51C6); //threshold (old config = 8800)
+    // ret |= CAEN_DGTZ_WriteRegister(handle[i],0x10D4,0x51C6); //threshold (old config = 8800) //
+
+    for(unsigned int j = 0 ; j < values.size(); j++)
+      ret |= CAEN_DGTZ_WriteRegister(write_handle[j],addresses[j],values[j]);
+
     //ret |= CAEN_DGTZ_ReadRegister(handle[i],0x10D4,&d32);
     //printf("0x10D4 mod -  %x\n",d32);
     // read fast trigger register
@@ -136,7 +177,7 @@ int ConfigureDigitizers(int handle[2], CAEN_DGTZ_BoardInfo_t Binfo[2], UserParam
   }
 
   //BEGIN of DEBUG OUTPUT
-  for(i=0; i<2; i++) {
+  for(unsigned int i=0; i<Params.NumOfDigitizers; i++) {
     int gr,ch;
     uint32_t TValue;
     CAEN_DGTZ_TriggerPolarity_t TriggerPolarity;
@@ -166,23 +207,29 @@ int ConfigureDigitizers(int handle[2], CAEN_DGTZ_BoardInfo_t Binfo[2], UserParam
 
   ///     Register Setting, separately    ///
 
-  ret |= CAEN_DGTZ_WriteRegister(handle[0],0x811C,0x0904); //old value set
-  ret |= CAEN_DGTZ_WriteRegister(handle[1],0x811C,0x000d0900); //
-  ret |= CAEN_DGTZ_WriteRegister(handle[0],0x81A0,0x2); //
-  ret |= CAEN_DGTZ_WriteRegister(handle[1],0x81A0,0x2); //
-  ret |= CAEN_DGTZ_WriteRegister(handle[1],0x8110,0x80000100); //
-  ret |= CAEN_DGTZ_WriteRegister(handle[0],0x8000,0x00029950); //
-  ret |= CAEN_DGTZ_WriteRegister(handle[1],0x8000,0x00029950); //
+  // ret |= CAEN_DGTZ_WriteRegister(handle[0],0x811C,0x0904); //old value set
+  // ret |= CAEN_DGTZ_WriteRegister(handle[1],0x811C,0x000d0900);
+  // ret |= CAEN_DGTZ_WriteRegister(handle[0],0x81A0,0x2); //
+  // ret |= CAEN_DGTZ_WriteRegister(handle[1],0x81A0,0x2); //
+  // ret |= CAEN_DGTZ_WriteRegister(handle[1],0x8110,0x80000100);
+  // ret |= CAEN_DGTZ_WriteRegister(handle[0],0x8000,0x00029950);
+  // ret |= CAEN_DGTZ_WriteRegister(handle[1],0x8000,0x00029950);
   //
   //
   //     ret |= CAEN_DGTZ_ReadRegister(handle[0],0x811C,&d32);
   //      printf("0x811C mod master -  %x\n",d32);
   //     ret |= CAEN_DGTZ_ReadRegister(handle[0],0x81A0,&d32);
   //      printf("0x81A0 mod master -  %x\n",d32);
-  ret |= CAEN_DGTZ_ReadRegister(handle[0],0x8120,&d32);
-  printf("0x8000 mod master -  %x\n",d32);
-  ret |= CAEN_DGTZ_ReadRegister(handle[1],0x8120,&d32);
-  printf("0x8000 mod slave -  %x\n",d32);
+
+  for(unsigned int j = 0; j < values.size() ; j++)
+  {
+    ret |= CAEN_DGTZ_ReadRegister(write_handle[j],addresses[j],&d32);
+    printf("%x register in digitizer %d = %x\n",addresses[j],write_handle[j],d32);
+  }
+  // ret |= CAEN_DGTZ_ReadRegister(handle[0],0x8120,&d32);
+  // printf("0x8000 mod master -  %x\n",d32);
+  // ret |= CAEN_DGTZ_ReadRegister(handle[1],0x8120,&d32);
+  // printf("0x8000 mod slave -  %x\n",d32);
 
   //
   //     ret |= CAEN_DGTZ_ReadRegister(handle[1],0x811C,&d32);
@@ -201,19 +248,19 @@ int ConfigureDigitizers(int handle[2], CAEN_DGTZ_BoardInfo_t Binfo[2], UserParam
 }
 
 /* ============================================================================== */
-int SetSyncMode(int handle[2], UserParams_t Params)
+int SetSyncMode(std::vector<int> handle, UserParams_t Params)
 {
-  int i, ret=0;
+  unsigned int i, ret=0;
   uint32_t reg,d32;
 
-  for(i=0; i<2; i++) {
-    if (i > 0)  // Run starts with S-IN on the 2nd board
+  for(i=0; i<Params.NumOfDigitizers; i++) {
+    if (i > 0)  // Run starts with S-IN on the 2nd board (or more than 2?) //FIXME
     ret |= CAEN_DGTZ_WriteRegister(handle[i], ADDR_ACQUISITION_MODE, RUN_START_ON_SIN_LEVEL);
     ret |= CAEN_DGTZ_WriteRegister(handle[i], ADDR_GLOBAL_TRG_MASK, (1<<30/*|1<<Params.RefChannel[i])*/));  // accept only trg from selected channel --
     // 	ret |= CAEN_DGTZ_WriteRegister(handle[i], ADDR_GLOBAL_TRG_MASK, (1<<30|1<<5));  // accept only trg from selected channel
 
     ret |= CAEN_DGTZ_WriteRegister(handle[i], ADDR_TRG_OUT_MASK, 0);   // no tigger propagation to TRGOUT
-    ret |= CAEN_DGTZ_WriteRegister(handle[i], ADDR_RUN_DELAY, 0);   // Run Delay decreases with the position (to compensate for run the propagation delay)
+    ret |= CAEN_DGTZ_WriteRegister(handle[i], ADDR_RUN_DELAY, 0);   // Run Delay decreases with the position (to compensate for run the propagation delay) //FIXME - what is this?
     //      ret |= CAEN_DGTZ_WriteRegister(handle[i], ADDR_RUN_DELAY, 2*(1-i));   // Run Delay decreases with the position (to compensate for run the propagation delay)
 
     // Set TRGOUT=RUN to propagate run through S-IN => TRGOUT daisy chain
@@ -222,7 +269,7 @@ int SetSyncMode(int handle[2], UserParams_t Params)
     ret |= CAEN_DGTZ_WriteRegister(handle[i], ADDR_FRONT_PANEL_IO_SET, reg);
   }
 
-  for(i=0; i<2; i++) {
+  for(i=0; i<Params.NumOfDigitizers; i++) {
     ret  |= CAEN_DGTZ_ReadRegister(handle[0],0x810C,&d32);
     printf("SetSyncMode 0x810C[%d] = %x\n",i,d32);
   }
@@ -241,7 +288,7 @@ int SetSyncMode(int handle[2], UserParams_t Params)
 }
 
 /* ============================================================================== */
-int StartRun(int handle[2], int StartMode)
+int StartRun(std::vector<int> handle, int StartMode)
 {
   if (StartMode == START_SW_CONTROLLED) {
     CAEN_DGTZ_WriteRegister(handle[0], ADDR_ACQUISITION_MODE, 0x4);
@@ -255,7 +302,7 @@ int StartRun(int handle[2], int StartMode)
 
 
 /* ============================================================================== */
-int StopRun(int handle[2])
+int StopRun(std::vector<int> handle)
 {
   CAEN_DGTZ_WriteRegister(handle[0], ADDR_ACQUISITION_MODE, 0x0);
   return 0;
@@ -277,11 +324,14 @@ int ForceClockSync(int handle)
 
 
 /* ########################################################################### */
-/* MAIN                                                    SetSyncMode                    */
+/* MAIN                                                    SetSyncMode         */
 /* ########################################################################### */
 int main(int argc, char *argv[])
 {
 
+  /* *************************************************************************************** */
+  /* SET USER PARAMS                                                                         */
+  /* *************************************************************************************** */
   UserParams_t  Params;
   std::string ConfigFileName = "";
   if(argc > 1)
@@ -294,64 +344,83 @@ int main(int argc, char *argv[])
     return 1;
   }
   ConfigFile config(ConfigFileName);
-
-  // if(argc > 1)
-  // {
   SetUserParams(&Params,config);
-  // }
-  // else
-  // {
-  //   SetDefaultParams(&Params);
-  // }
+  /* *************************************************************************************** */
 
-  // SetUserParams(&Params,config);
 
-  // ConfigFile config;
+  /* *************************************************************************************** */
+  /* VARIABLES                                                                               */
+  /* *************************************************************************************** */
   int cycle = 0;
-  int i, ret=0, Nbit, Nch, error=1, running=0;
-  int EvNoData[2]={0,0};
-  int GetNextEvent[2]={1,1};
+  int ret=0, Nbit, Nch, error=1, running=0;
   int QuitAcquisition=0, plot=0, PlotHist=0, ContinousHistPlot=0,SoftwareTrigger =0,ContinousWaveplot=0;
-  int write[2]={0,0};
-  int ContinousWrite[2]={0,0};
-  int handle[2];
-  char *buffer[2]={NULL, NULL}, *EventPtr[2]={NULL, NULL};
-  CAEN_DGTZ_BoardInfo_t  BoardInfo[2];
-  CAEN_DGTZ_EventInfo_t  EventInfo[2];
-  CAEN_DGTZ_X742_EVENT_t *Event742[2] = {NULL, NULL};
-  float *Wave[2];
-  float *Trigger[2];
-
-
-
-  uint32_t Ns[2], EIndx[2]={0,0}, NumEvents[2]={0,0}, BufferSize[2]={0,0}, TrgCnt[2]={0,0}, missingEdge[2]={0,0};
   uint32_t Nb=0, MatchingEvents=0;
-  // uint32_t *histoT = NULL;
-  uint64_t CurrentTime, PrevRateTime, ElapsedTime, NsT=0, NsTTT=0, Nroll[2]={0,0},Head_Nroll[2]={0,0};
+  uint64_t CurrentTime, PrevRateTime, ElapsedTime, NsT=0, NsTTT=0;
   char c;
   double Ts, Tt;
-  double TTT[2], PrevTTT[2] = {0,0}, DeltaT, DeltaTTT, PulseEdgeTime[2], TrEdgeTime[2];
   double MeanT=0.0, MeanTTT=0.0, SigmaT=0.0, SigmaTTT=0.0;
-
-  //   int iPrev,jPrev;
-  //   for(iPrev = 0; iPrev < 2 ; iPrev++)
-  //   {
-  //     for(jPrev = 0; jPrev < 4 ; jPrev++)
-  //     {
-  //       PrevTTT[iPrev][jPrev] = 0;
-  //     }
-  //   }
-
-  DataCorrection_t Table[2];
-
   FILE *log        = NULL;
   FILE *event_file = NULL;
-  FILE *board[2] ={ NULL,NULL};
-  //   FILE *board1 = NULL;
   FILE *plotter;
-
   FILE *binOut = NULL;
   FILE *textOut = NULL;
+
+
+  std::vector<int> EvNoData;
+  std::vector<int> GetNextEvent;
+  std::vector<int> write;
+  std::vector<int> ContinousWrite;
+  std::vector<int> handle;
+  std::vector<char*> buffer;
+  std::vector<char*> EventPtr;
+  std::vector<CAEN_DGTZ_BoardInfo_t> BoardInfo;
+  std::vector<CAEN_DGTZ_EventInfo_t> EventInfo;
+  std::vector<CAEN_DGTZ_X742_EVENT_t*> Event742;
+  std::vector<float*> Wave;
+  std::vector<float*> Trigger;
+  std::vector<FILE*> board;
+  std::vector<uint32_t> Ns, EIndx, NumEvents, BufferSize, TrgCnt, missingEdge;
+  std::vector<uint64_t> Nroll,Head_Nroll;
+  std::vector<double> TTT, PrevTTT, DeltaT, DeltaTTT, PulseEdgeTime, TrEdgeTime;
+  std::vector<DataCorrection_t> Table;
+
+  for(unsigned int i = 0 ; i < Params.NumOfDigitizers; i++)
+  {
+    EvNoData.push_back(0);
+    GetNextEvent.push_back(1);
+    write.push_back(0);
+    ContinousWrite.push_back(0);
+    handle.push_back(0);
+    buffer.push_back(NULL);
+    EventPtr.push_back(NULL);
+    Wave.push_back(NULL);
+    Trigger.push_back(NULL);
+    board.push_back(NULL);
+    Ns.push_back(0);
+    EIndx.push_back(0);
+    NumEvents.push_back(0);
+    BufferSize.push_back(0);
+    TrgCnt.push_back(0);
+    missingEdge.push_back(0);
+    Nroll.push_back(0);
+    Head_Nroll.push_back(0);
+    TTT.push_back(0);
+    PrevTTT.push_back(0);
+    DeltaT.push_back(0);
+    DeltaTTT.push_back(0);
+    PulseEdgeTime.push_back(0);
+    TrEdgeTime.push_back(0);
+    Event742.push_back(NULL);
+
+    CAEN_DGTZ_BoardInfo_t BoardInfo_temp;
+    CAEN_DGTZ_EventInfo_t EventInfo_temp;
+    DataCorrection_t Table_temp;
+    BoardInfo.push_back(BoardInfo_temp);
+    EventInfo.push_back(EventInfo_temp);
+    Table.push_back(Table_temp);
+  }
+
+
 
   printf("\n");
   printf("**************************************************************\n");
@@ -364,7 +433,7 @@ int main(int argc, char *argv[])
   /* *************************************************************************************** */
   /* OPEN DIGITIZERS                                                                         */
   /* *************************************************************************************** */
-  for (i = 0; i < 2; i++) {
+  for (unsigned int i = 0; i < Params.NumOfDigitizers; i++) {
     ret = CAEN_DGTZ_OpenDigitizer(Params.ConnectionType[i], Params.LinkNum[i], Params.ConetNode[i], Params.BaseAddress[i], &handle[i]);
     if (ret) {
       printf("Can't open digitizer n. %d\n", i);
@@ -375,7 +444,7 @@ int main(int argc, char *argv[])
   /* *************************************************************************************** */
   /* GET BOARD INFO AND FW REVISION                                                          */
   /* *************************************************************************************** */
-  for (i = 0; i < 2; i++) {
+  for (unsigned int i = 0; i < Params.NumOfDigitizers; i++) {
     ret = CAEN_DGTZ_GetInfo(handle[i], &BoardInfo[i]);
     if (ret) {
       printf("Can't read board info for digitizer n. %d\n", i);
@@ -414,7 +483,7 @@ int main(int argc, char *argv[])
   /* BOARD CONFIGURATION                                                                     */
   /* *************************************************************************************** */
   // Set registers for the acquisition (record length, channel mask, etc...)
-  ret = ConfigureDigitizers(handle, BoardInfo, Params);
+  ret = ConfigureDigitizers(handle, BoardInfo, Params, config);
   // Set registers for the synchronization (start mode, trigger masks, signals propagation, etc...)
   ret |= SetSyncMode(handle, Params);
   if (ret) {
@@ -427,7 +496,7 @@ int main(int argc, char *argv[])
   /* *************************************************************************************** */
   /* MEMORY ALLOCATION                                                                       */
   /* *************************************************************************************** */
-  for(i = 0; i < 2; ++i) {
+  for(unsigned int i = 0; i < Params.NumOfDigitizers; ++i) {
     uint32_t AllocatedSize;
     /* Memory allocation for event buffer and readout buffer */
     ret = CAEN_DGTZ_AllocateEvent(handle[i],(void**)&Event742[i]);
@@ -446,10 +515,7 @@ int main(int argc, char *argv[])
   /* *************************************************************************************** */
   /* OPEN FILES                                                                              */
   /* *************************************************************************************** */
-  if (Params.EnableLog)
-  log = fopen("events.txt", "w");  // Open Output Files
-  //     board[0] = fopen("board0.txt", "w");
-  //     board[1] = fopen("board1.txt", "w");
+  if (Params.EnableLog) log = fopen("events.txt", "w");  // Open Output Files
   plotter = popen(GNUPLOTEXE, "w");    // Open plotter pipe (gnuplot)
 
   binOut = fopen("binary.dat","wb");
@@ -462,8 +528,8 @@ int main(int argc, char *argv[])
   c = getch();
   if (c == 'c') {
     uint32_t rdata[2];
-    // propagate CLK to trgout on both boards
-    for(i=0; i<2; i++) {
+    // propagate CLK to trgout on both (all?) boards
+    for(unsigned int i=0; i<Params.NumOfDigitizers; i++) {
       CAEN_DGTZ_ReadRegister(handle[i], ADDR_FRONT_PANEL_IO_SET, &rdata[i]);
       CAEN_DGTZ_WriteRegister(handle[i], ADDR_FRONT_PANEL_IO_SET, 0x00050000);
     }
@@ -474,11 +540,10 @@ int main(int argc, char *argv[])
       ForceClockSync(handle[0]);
       printf("PLL reloaded\n");
     }
-    for(i=0; i<2; i++)
+    for(unsigned int i=0; i<Params.NumOfDigitizers; i++)
     CAEN_DGTZ_WriteRegister(handle[i], ADDR_FRONT_PANEL_IO_SET, rdata[i]);
   }
-  if (c != 's')
-  goto QuitProgram;
+  if (c != 's') goto QuitProgram;
 
   /* *************************************************************************************** */
   /* START RUN                                                                               */
@@ -500,15 +565,20 @@ int main(int argc, char *argv[])
     // check for keyboard commands
     // /Data/ --------------------------------------------
     if (kbhit()) {
+
       c = getch();
+
       if (c == 't')
       SoftwareTrigger = 1;
+
       if (c == 'q')
       QuitAcquisition = 1;
+
       if (c == 'p'){
         plot = 1;
         ContinousWaveplot = 0;
       }
+
       if (c == 'w'){
         printf("Writing single output\n");
         write[0] = 1;
@@ -516,13 +586,9 @@ int main(int argc, char *argv[])
         write[1] = 1;
         ContinousWrite[1] = 0;
       }
-      if (c == 'W'){
-        int i =0;
-        // 	  if(!ContinousWrite[0] && !ContinousWrite[1])
-        //
-        // 	  else
 
-        for(i = 0; i < 2 ; i++)
+      if (c == 'W'){
+        for(unsigned int i = 0; i < Params.NumOfDigitizers ; i++)
         {
           if(!ContinousWrite[i])
           {
@@ -537,9 +603,8 @@ int main(int argc, char *argv[])
             printf("Stopping output writing to file %d\n",i);
           }
         }
-
-
       }
+
       if (c == 'P'){
         plot = 1;
         ContinousWaveplot = 1;
@@ -554,10 +619,11 @@ int main(int argc, char *argv[])
       }
       if (c == 's') {
         if(!running) {
-          GetNextEvent[0]=1;
-          GetNextEvent[1]=1;
-          NumEvents[0]=0;
-          NumEvents[1]=0;
+          for(unsigned int i = 0; i < Params.NumOfDigitizers ; i++)
+          {
+            GetNextEvent[i] = 1;
+            NumEvents[i] = 0;
+          }
           SetSyncMode(handle, Params);
           StartRun(handle, Params.StartMode);
           running=1;
@@ -587,12 +653,12 @@ int main(int argc, char *argv[])
     ElapsedTime = CurrentTime - PrevRateTime;
     if (ElapsedTime > 1000) {
       printf("Readout Rate=%.2f MB\n", (float)Nb/((float)ElapsedTime*1048.576f));
-      for(i=0; i<2; i++) {
+      for(unsigned int i=0; i<Params.NumOfDigitizers; i++) {
         if (TrgCnt[i]>0) {
           printf("Board %d:\tTrgRate=%.2f KHz. Matching Events=%.2f%%; ", i, (float)TrgCnt[i]/(float)ElapsedTime, 100*(float)MatchingEvents/(float)TrgCnt[i]/*, 100*(float)missingEdge[i]/(float)MatchingEvents*/);
           //BEGIN DEBUG//
           //printf("buffer size: %d\n",BufferSize[0]);
-          printf("number of event in the current buffer: %d\n",NumEvents[0]);
+          printf("number of event in the current buffer: %d\n",NumEvents[i]);
           //printf("trigger time tag: %d\n", Event742[i]->DataGroup[Params.RefChannel[i]/8].TriggerTimeTag);
           //END DEBUG//
           if (MatchingEvents>0)
@@ -642,7 +708,7 @@ int main(int argc, char *argv[])
     // ----------------------------------------------------------------
     // Read data
     // ----------------------------------------------------------------
-    for(i=0; i<2; i++) {
+    for(unsigned int i=0; i<Params.NumOfDigitizers; i++) {
       if (GetNextEvent[i]) {
 
         /* read a new data block from the board if there are no more events to use in the readout buffer */
@@ -676,14 +742,18 @@ int main(int argc, char *argv[])
         }
       }
     }
-    if (GetNextEvent[0] || GetNextEvent[1])  // missing data from one or both boards
+
+    bool missingData = false;
+    for(unsigned int i=0; i<Params.NumOfDigitizers; i++)
+       missingData |= GetNextEvent[i];
+    if (missingData)  // missing data from one or both boards
     continue;
 
     // ----------------------------------------------------------------
     // Analyze data
     // ----------------------------------------------------------------
     // calculate extended Trigger Time Tag (take roll over into account)
-    for(i=0; i<2; i++)
+    for(unsigned int i=0; i<Params.NumOfDigitizers; i++)
     {
       double internalTTT[4];
       int gr=0;
@@ -714,6 +784,11 @@ int main(int argc, char *argv[])
       // 	      }
     }
 
+    // rewrite of check matching window for being compatible with multi board (more than two)
+    // all boards have to be aligned with Master, or we pass to next event in that board
+    //TODO - for now is 0 and 1 like before!!!
+
+    // std::sort(TTT.begin(),TTT.end());
     if (TTT[0] < (TTT[1] - Params.MatchingWindow*Tt)) {
       EIndx[0]++;
       // 	    printf("board 0 is behind board 1\n");
@@ -726,10 +801,11 @@ int main(int argc, char *argv[])
       // 	    printf("board 1 is behind board 0\n");
       continue;
       // CASE3: trigger time tags match: calculate DeltaT between edges
-    } else
+    }
+    else
     {
       MatchingEvents++;
-      for(i=0; i<2; i++)
+      for(unsigned int i=0; i<Params.NumOfDigitizers; i++)
       {
 
         EIndx[i]++;
@@ -754,7 +830,7 @@ int main(int argc, char *argv[])
           int ch=0;
 
           int iSample = 0;
-          for( iSample = 0 ; iSample < 1024 ; iSample++)
+          for( iSample = 0 ; iSample < Params.RecordLength ; iSample++)
           {
             for(gr =0 ; gr < 4 ; gr++)
             {
@@ -1016,7 +1092,7 @@ int main(int argc, char *argv[])
   /* *************************************************************************************** */
   /* FINAL CLEANUP                                                                           */
   /* *************************************************************************************** */
-  for (i = 0; i < 2; i++) {
+  for (unsigned int i = 0; i < Params.NumOfDigitizers; i++) {
     /* stop the acquisition */
     CAEN_DGTZ_SWStopAcquisition(handle[i]);
     /* close the device and free the buffers */

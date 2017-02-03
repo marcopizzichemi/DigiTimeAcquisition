@@ -213,7 +213,6 @@ void SetDefaultParams(UserParams_t *Params)
   {
     Params->ConnectionType.push_back(CAEN_DGTZ_OpticalLink);
     Params->LinkNum.push_back(0);
-
     Params->FastTriggerThreshold.push_back(20934);
     Params->FastTriggerOffset.push_back(32768);
     Params->DCoffset.push_back(0x7FFF);
