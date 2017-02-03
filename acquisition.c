@@ -283,20 +283,29 @@ int main(int argc, char *argv[])
 {
 
   UserParams_t  Params;
-  std::string ConfigFileName = "config.cfg";
-  // and assume as default that there is no config file name from command line
-  // then check
-  if(std::string(argv[1]) == std::string("-c")) // first argument is -c, then the config file name is passed by command line
+  std::string ConfigFileName = "";
+  if(argc > 1)
   {
-    ConfigFileName = argv[2];
-    std::cout << "Configuration file: '" << argv[2] << "'"<< std::endl;
+    ConfigFileName = string(argv[1]);
   }
-  else // the config file was indeed the default one
+  else
   {
-    std::cout << "Configuration file set to default: config.cfg "<< std::endl;
+    std::cout << "ERROR!!!! you need to provide a config file (example config.cfg)" << std::endl;
+    return 1;
   }
+  ConfigFile config(ConfigFileName);
 
-  ConfigFile config(ConfigFileName); // create a ConfigFile object
+  // if(argc > 1)
+  // {
+  SetUserParams(&Params,config);
+  // }
+  // else
+  // {
+  //   SetDefaultParams(&Params);
+  // }
+
+  // SetUserParams(&Params,config);
+
   // ConfigFile config;
   int cycle = 0;
   int i, ret=0, Nbit, Nch, error=1, running=0;
@@ -349,7 +358,7 @@ int main(int argc, char *argv[])
   printf(" CAEN V1742 Acquisition Software \n");
   printf("**************************************************************\n\n");
 
-  SetUserParams(&Params,config);
+
 
 
   /* *************************************************************************************** */

@@ -127,21 +127,22 @@ int kbhit();
 // Variables for the user parameters
 //****************************************************************************
 typedef struct {
-  std::vector<CAEN_DGTZ_ConnectionType> ConnectionType;
-  std::vector<int> LinkNum;
-  std::vector<int> ConetNode;
-  std::vector<uint32_t> BaseAddress;
+  // vectors of parameters, one per digitizer
+  std::vector<CAEN_DGTZ_ConnectionType>       ConnectionType;           // type of connetion PC-Digitizer
+  std::vector<int>                            LinkNum;                  // link number for each digitizer
+  std::vector<int>                            ConetNode;                // Conet Node
+  std::vector<uint32_t>                       BaseAddress;              // Base addresses of each digitizer
+  std::vector<uint32_t>                       FastTriggerThreshold;
+  std::vector<uint32_t>                       FastTriggerOffset;
+  std::vector<uint32_t>                       DCoffset;
+  std::vector<uint32_t>                       ChannelThreshold;
+  std::vector<uint32_t>                       TRThreshold;
+  std::vector<CAEN_DGTZ_TriggerPolarity_t>    ChannelPulseEdge;
+  std::vector<uint32_t>                       PostTrigger;
 
-  int RefChannel[2];
-  uint16_t FastTriggerThreshold[2];
-  uint16_t FastTriggerOffset[2];
-  uint16_t DCoffset[2];
-  uint16_t ChannelThreshold[2];
-  uint16_t TRThreshold[2];
-  CAEN_DGTZ_TriggerPolarity_t ChannelPulseEdge[2];
-  uint32_t PostTrigger[2];
-
-  int RecordLength;
+  // global parameters
+  unsigned int                                NumOfDigitizers;          // number of digitizers connected. it will be calculated by the legth of strings in config file
+  int                                         RecordLength;
   CAEN_DGTZ_TriggerPolarity_t TriggerEdge;
   int MatchingWindow;
   int TestPattern;
@@ -151,23 +152,11 @@ typedef struct {
   int EnableLog;
   CAEN_DGTZ_DRS4Frequency_t DRS4Frequency;
 
-  int HistoNbins;
-  double HistoOffset;
-  double HistoBinSize;
 } UserParams_t;
-
-typedef struct
-{
-  float TTT[2][4];
-  float *Wave[2][32];
-  float *Trigger[2][4];
-  //   float PulseEdgeTime[2];
-  //   float TrEdgeTime[2];
-} OutputData_t;
-
 
 //****************************************************************************
 // Functions
 //****************************************************************************
 void SetUserParams(UserParams_t *Params,ConfigFile &config);
+void SetDefaultParams(UserParams_t *Params); // with default params
 #endif
