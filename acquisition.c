@@ -1,5 +1,5 @@
 // compile with
-// g++ acquisition.c X742CorrectionRoutines.c userparams.c ConfigFile.cc -o acquisition -lCAENDigitizer -lCAENComm
+// g++ -DLINUX acquisition.c X742CorrectionRoutines.c userparams.c dpp_qdc.c _CAENDigitizer_DPP-QDC.c ConfigFile.cc -o acquisition -lCAENDigitizer -lCAENComm -fpermissive
 
 /*
 * Synctest application is a simple piece of software to demonstrates
@@ -29,6 +29,7 @@
 
 #include "acquisition.h"
 #include "X742CorrectionRoutines.h"
+#include "dpp_qdc.h"
 // #include "ConfigFile.h"
 
 #ifdef WIN32
@@ -134,7 +135,7 @@ int ConfigureDigitizers(std::vector<int> handle, std::vector<CAEN_DGTZ_BoardInfo
     ret |= CAEN_DGTZ_SetPostTriggerSize(handle[i], Params.PostTrigger[i]);
     ret |= CAEN_DGTZ_SetIOLevel(handle[i], Params.IOlevel);
     ret |= CAEN_DGTZ_SetMaxNumEventsBLT(handle[i], MAX_EVENTS_XFER);
-    
+
     ret |= CAEN_DGTZ_SetGroupEnableMask(handle[i], 0x000F);   // fixed to enable all groups
     int gr,ch;
     for(gr = 0 ; gr < 4 ; gr++)
@@ -341,7 +342,19 @@ int main(int argc, char *argv[])
     return 1;
   }
   ConfigFile config(ConfigFileName);
-  SetUserParams(&Params,config);
+
+  //get the two config file names
+  std::string digiTimeConfigFile = config.read<std::string>("digiTimeConfigFile");
+  std::string digiChargeConfigFile = config.read<std::string>("digiChargeConfigFile");
+  int NumbOfDigiTime = config.read<int>("NumbOfDigiTime");
+  int NumbOfDigiCharge = config.read<int>("NumbOfDigiCharge");
+
+  //open digi time config
+  ConfigFile configDigi(ConfigFileName);
+  SetUserParams(&Params,configDigi);
+
+
+
   /* *************************************************************************************** */
 
 
@@ -438,6 +451,12 @@ int main(int argc, char *argv[])
     }
   }
 
+  // open charge digitizer(s)
+  ret = setup_acquisition(digiChargeConfigFile.c_str());
+  if (ret) {
+    printf("Error during acquisition setup (ret = %d) .... Exiting\n", ret);
+  running = 0;
+  }
   /* *************************************************************************************** */
   /* GET BOARD INFO AND FW REVISION                                                          */
   /* *************************************************************************************** */
