@@ -350,7 +350,7 @@ int main(int argc, char *argv[])
   int NumbOfDigiCharge = config.read<int>("NumbOfDigiCharge");
 
   //open digi time config
-  ConfigFile configDigi(ConfigFileName);
+  ConfigFile configDigi(digiTimeConfigFile.c_str());
   SetUserParams(&Params,configDigi);
 
 
