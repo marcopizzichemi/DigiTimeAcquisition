@@ -1,3 +1,6 @@
+// compile with
+// g++ acquisition.c X742CorrectionRoutines.c userparams.c ConfigFile.cc -o acquisition -lCAENDigitizer -lCAENComm
+
 /*
 * Synctest application is a simple piece of software to demonstrates
 * multiboard synchronization with CAEN digitizers.
@@ -12,9 +15,9 @@
 
 // TODO
 // 0 - testing of ALL with boards
-// 1- write registers from config to specific modules - DONE
-// 2- implement TTT control for multi boards
-// 3- active channels, groups etc
+// 1-  write registers from config to specific modules - DONE
+// 2-  implement TTT control for multi boards - up to now valid for 2 and only 2 boards (i.e. won't even work for 1 board alone...)
+// 3-  active channels, groups etc
 // 4 - what is Tt?
 // 5 - SetSyncMode, various FIXME
 
@@ -97,17 +100,13 @@ int ConfigureDigitizers(std::vector<int> handle, std::vector<CAEN_DGTZ_BoardInfo
   std::vector<int> write_handle;
   std::string values_s,addresses_s,write_handle_s;
   std::vector<std::string> values_f,addresses_f,write_handle_f;
-
   write_handle_s = config.read<std::string>("board","");
   addresses_s = config.read<std::string>("address","");
   values_s = config.read<std::string>("value","");
-
   config.split( values_f, values_s, "," );
   config.split( addresses_f, addresses_s, "," );
   config.split( write_handle_f, write_handle_s, "," );
-
-  assert( (values_f == addresses_f) && (values_f == write_handle_f) );
-
+  assert( (values_f.size() == addresses_f.size()) && (values_f.size() == write_handle_f.size()) );
   for(unsigned int i = 0 ; i < values_f.size() ; i++)
   {
     //trim strings
@@ -119,8 +118,8 @@ int ConfigureDigitizers(std::vector<int> handle, std::vector<CAEN_DGTZ_BoardInfo
     write_handle.push_back((uint32_t) strtol(write_handle_f[i].c_str(), NULL, 0) );
   }
 
-
-  for(unsigned int i=0; i<Params.NumOfDigitizers; i++) {
+  for(unsigned int i=0; i<Params.NumOfDigitizers; i++)
+  {
     /* Reset all board registers */
     ret |= CAEN_DGTZ_Reset(handle[i]);
 
@@ -135,10 +134,8 @@ int ConfigureDigitizers(std::vector<int> handle, std::vector<CAEN_DGTZ_BoardInfo
     ret |= CAEN_DGTZ_SetPostTriggerSize(handle[i], Params.PostTrigger[i]);
     ret |= CAEN_DGTZ_SetIOLevel(handle[i], Params.IOlevel);
     ret |= CAEN_DGTZ_SetMaxNumEventsBLT(handle[i], MAX_EVENTS_XFER);
-
-    //     gr=Params.RefChannel[i]/8;
-    //     ret |= CAEN_DGTZ_SetGroupEnableMask(handle[i], 1<<gr);
-    ret |= CAEN_DGTZ_SetGroupEnableMask(handle[i], 0x000F);   // FIXME - let user choose which groups are enabled, run following on groups enabled
+    
+    ret |= CAEN_DGTZ_SetGroupEnableMask(handle[i], 0x000F);   // fixed to enable all groups
     int gr,ch;
     for(gr = 0 ; gr < 4 ; gr++)
     {
@@ -451,17 +448,21 @@ int main(int argc, char *argv[])
       goto QuitProgram;
     }
     /* Check BoardType */
-    if (BoardInfo[i].FamilyCode!= 6) {
-      printf("This digitizer is not a V1742; V1742TestSync doesn't support it\n");
-      goto QuitProgram;
-    }
-    if (ret = LoadCorrectionTables(handle[i], &Table[i], 0, Params.DRS4Frequency))
-    goto QuitProgram;
-
     printf("Connected to CAEN Digitizer Model %s\n", BoardInfo[i].ModelName);
     printf("ROC FPGA Release is %s\n", BoardInfo[i].ROC_FirmwareRel);
     printf("AMC FPGA Release is %s\n\n", BoardInfo[i].AMC_FirmwareRel);
     printf("Correction Tables Loaded!\n\n");
+//     if (BoardInfo[i].FamilyCode!= 6) {
+//       printf("This digitizer is not a V1742; V1742TestSync doesn't support it\n");
+//       goto QuitProgram;
+//     }
+//     if (ret = LoadCorrectionTables(handle[i], &Table[i], 0, Params.DRS4Frequency))
+//     goto QuitProgram;
+
+//     printf("Connected to CAEN Digitizer Model %s\n", BoardInfo[i].ModelName);
+//     printf("ROC FPGA Release is %s\n", BoardInfo[i].ROC_FirmwareRel);
+//     printf("AMC FPGA Release is %s\n\n", BoardInfo[i].AMC_FirmwareRel);
+//     printf("Correction Tables Loaded!\n\n");
   }
 
 
