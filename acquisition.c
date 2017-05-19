@@ -450,16 +450,6 @@ int main(int argc, char *argv[])
       goto QuitProgram;
     }
   }
-
-  // open charge digitizer(s)
-  ret = setup_acquisition(digiChargeConfigFile.c_str());
-  if (ret) {
-    printf("Error during acquisition setup (ret = %d) .... Exiting\n", ret);
-  running = 0;
-  }
-  /* *************************************************************************************** */
-  /* GET BOARD INFO AND FW REVISION                                                          */
-  /* *************************************************************************************** */
   for (unsigned int i = 0; i < Params.NumOfDigitizers; i++) {
     ret = CAEN_DGTZ_GetInfo(handle[i], &BoardInfo[i]);
     if (ret) {
@@ -483,6 +473,17 @@ int main(int argc, char *argv[])
 //     printf("AMC FPGA Release is %s\n\n", BoardInfo[i].AMC_FirmwareRel);
 //     printf("Correction Tables Loaded!\n\n");
   }
+  
+  // open charge digitizer(s)
+  ret = setup_acquisition(digiChargeConfigFile.c_str());
+  if (ret) {
+    printf("Error during acquisition setup (ret = %d) .... Exiting\n", ret);
+  running = 0;
+  }
+  /* *************************************************************************************** */
+  /* GET BOARD INFO AND FW REVISION                                                          */
+  /* *************************************************************************************** */
+
 
 
   /* Get num of channels, num of bit, num of group of the board from first board */
