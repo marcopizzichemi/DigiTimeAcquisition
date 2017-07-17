@@ -9,7 +9,7 @@
 
 /* Globals */
 
-int	gHandle; /* CAEN library handle */
+extern int	gHandle; /* CAEN library handle */
 
 /* Variable declarations */
 unsigned int gActiveChannel;
@@ -37,7 +37,7 @@ Stats        gAcqStats  ;
 FILE *       gPlotDataFile;
 FILE *       gListFiles[MAX_CHANNELS];
 
-CAEN_DGTZ_BoardInfo_t             gBoardInfo;
+extern CAEN_DGTZ_BoardInfo_t             gBoardInfo;
 _CAEN_DGTZ_DPP_QDC_Event_t*     gEvent[MAX_CHANNELS];
 _CAEN_DGTZ_DPP_QDC_Waveforms_t* gWaveforms;
 
@@ -471,6 +471,7 @@ int configure_digitizer(int handle, int EquippedGroups, BoardParameters *params)
 ** reading board data.
 */
 int run_acquisition() {
+//         printf("run\n");
         int ret;
         unsigned int i;
         unsigned int j;
@@ -486,124 +487,127 @@ int run_acquisition() {
 
         memset(NumEvents, 0, MAX_CHANNELS*sizeof(NumEvents[0]));
 
-		/* Read a block of data from the digitizer */
-		ret = CAEN_DGTZ_ReadData(gHandle, CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, gAcqBuffer, &bsize); /* Read the buffer from the digitizer */
-        gLoops += 1;
-		if (ret) {
-			printf("Readout Error\n");
-			return -1;
-		}
-		if (bsize == 0)
-			return 0;
-
+	/* Read a block of data from the digitizer */
+	ret = CAEN_DGTZ_ReadData(gHandle, CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, gAcqBuffer, &bsize); /* Read the buffer from the digitizer */
+// 	printf("bsize %d\n",bsize);
+	gLoops += 1;
+	if (ret) {
+	  printf("Readout Error\n");
+	  return -1;
+	}
+	if (bsize == 0)
+	  return 0;
+//         printf("bsize %d\n",bsize);
         /* Decode and analyze Events */
         if ( (ret = _CAEN_DGTZ_GetDPPEvents(gHandle, gAcqBuffer, bsize, (void **)gEvent, NumEvents)) != CAEN_DGTZ_Success)
         {
-          printf("Errro during _CAEN_DGTZ_GetDPPEvents() call (ret = %d): exiting ....\n", ret);
+          printf("Error during _CAEN_DGTZ_GetDPPEvents() call (ret = %d): exiting ....\n", ret);
           exit(-1);
         }
 
         /* Loop over all channels and events */
-        for (i=0; i < gEquippedChannels; ++i) {
-            for(j=0; j<NumEvents[i]; ++j) {
-                uint32_t Charge;
-
-                 Charge = (gEvent[i][j].Charge & 0xFFFF);  /* rebin charge to 4Kchannels */
-
-
-                /* Update energy histogram */
-                if ((Charge < HISTO_NBIN) && (Charge >= CHARGE_LLD_CUT) && (Charge <= CHARGE_ULD_CUT) && (gEvent[i][j].Overrange == 0))
-                    gHisto[i][Charge]++;
-
-                /* Plot Histogram */
-                if ((gCurrTime-gPrevHPlotTime) > 1000) {
-                    gPlotDataFile = fopen("PlotData.txt", "w");
-                    for(bin=0; bin<HISTO_NBIN; bin++)
-                        fprintf(gPlotDataFile, "%d\n", gHisto[gActiveChannel][bin]);
-                    fclose(gPlotDataFile);
-                    fprintf(gHistPlotFile, "plot 'PlotData.txt' with step\n");
-                    fflush(gHistPlotFile);
-                    gPrevHPlotTime = gCurrTime;
-                }
-
-                /* Check roll over of time tag */
-                if (gEvent[i][j].TimeTag < gPrevTimeTag[i])
-                    gETT[i]++;
-
-                gExtendedTimeTag[i] = (gETT[i] << 32) + (uint64_t)(gEvent[i][j].TimeTag);
-
-
-                /* Save event to output file */
-                if (gParams.SaveList) {
-                       fprintf(gListFiles[i], "%16llu %8d\n", gExtendedTimeTag[i], gEvent[i][j].Charge);
-                }
-
-                /* Plot Waveforms (if enabled) */
-                if ((i==gActiveChannel) && (gParams.AcqMode == ACQMODE_MIXED) && ((gCurrTime-gPrevWPlotTime) > 300) && (Charge >= CHARGE_LLD_CUT) && (Charge <= CHARGE_ULD_CUT)) {
-                    _CAEN_DGTZ_DecodeDPPWaveforms(&gEvent[i][j], gWaveforms);
-                    gPlotDataFile = fopen("PlotWave.txt", "w");
-                        for(j=0; j<gWaveforms->Ns; j++) {
-                                fprintf(gPlotDataFile, "%d ", gWaveforms->Trace1[j]);                 /* samples */
-                                fprintf(gPlotDataFile, "%d ", 2000 + 200 *  gWaveforms->DTrace1[j]);  /* gate    */
-				    			fprintf(gPlotDataFile, "%d ", 1000 + 200 *  gWaveforms->DTrace2[j]);  /* trigger */
-				    			fprintf(gPlotDataFile, "%d ", 500 + 200 *  gWaveforms->DTrace3[j]);   /* trg hold off */
-				    			fprintf(gPlotDataFile, "%d\n", 100 + 200 *  gWaveforms->DTrace4[j]);  /* overthreshold */
-				    		}
-				    	fclose(gPlotDataFile);
-
-
-                    switch (gAnalogTrace) {
-                    case 0:
-                        fprintf(gWavePlotFile, "plot 'PlotWave.txt' u 1 t 'Input' w step, 'PlotWave.txt' u 2 t 'Gate' w step, 'PlotWave.txt' u 3 t 'Trigger' w step, 'PlotWave.txt' u 4 t 'TrgHoldOff' w step, 'PlotWave.txt' u 5 t 'OverThr' w step\n");
-                        break;
-                    case 1:
-                        fprintf(gWavePlotFile, "plot 'PlotWave.txt' u 1 t 'Smooth' w step, 'PlotWave.txt' u 2 t 'Gate' w step, 'PlotWave.txt' u 3 t 'Trigger' w step, 'PlotWave.txt' u 4 t 'TrgHoldOff' w step, 'PlotWave.txt' u 5 t 'OverThr' w step\n");
-                        break;
-                    case 2:
-                        fprintf(gWavePlotFile, "plot 'PlotWave.txt' u 1 t 'Baseline' w step, 'PlotWave.txt' u 2 t 'Gate' w step, 'PlotWave.txt' u 3 t 'Trigger' w step, 'PlotWave.txt' u 4 t 'TrgHoldOff' w step, 'PlotWave.txt' u 5 t 'OverThr' w step\n");
-                        break;
-                    default:
-                        fprintf(gWavePlotFile, "plot 'PlotWave.txt' u 1 t 'Input' w step, 'PlotWave.txt' u 2 t 'Gate' w step, 'PlotWave.txt' u 3 t 'Trigger' w step, 'PlotWave.txt' u 4 t 'TrgHoldOff' w step, 'PlotWave.txt' u 5 t 'OverThr' w step\n");
-                        break;
-                    }
-
-                    fflush(gWavePlotFile);
-                    gPrevWPlotTime = gCurrTime;
-				    }
-
-
-  		       gPrevTimeTag[i]   = gEvent[i][j].TimeTag;
-            }
-
-
-            gEvCnt[i]        += NumEvents[i];
-            if (gToggleTrace) {
-
-                switch (gAnalogTrace) {
-                case 0:
-                    CAEN_DGTZ_WriteRegister(gHandle, 0x8008, 3<<12);
-                    break;
-                case 1:
-                    CAEN_DGTZ_WriteRegister(gHandle, 0x8004, 1<<12);
-                    CAEN_DGTZ_WriteRegister(gHandle, 0x8008, 1<<13);
-                    break;
-                case 2:
-                    CAEN_DGTZ_WriteRegister(gHandle, 0x8008, 1<<12);
-                    CAEN_DGTZ_WriteRegister(gHandle, 0x8004, 1<<13);
-                    break;
-                default:
-                    CAEN_DGTZ_WriteRegister(gHandle, 0x8004, 3<<12);
-                    break;
-                }
-
-
-                gToggleTrace = 0;
-            }
-
-		}
-
-        gAcqStats.nb += bsize;
-        return 0;
+	for (i=0; i < gEquippedChannels; ++i) {
+	  for(j=0; j<NumEvents[i]; ++j) {
+	    uint32_t Charge;
+	    
+	    Charge = (gEvent[i][j].Charge & 0xFFFF);  /* rebin charge to 4Kchannels */
+	    
+	    
+	    /* Update energy histogram */
+	    if ((Charge < HISTO_NBIN) && (Charge >= CHARGE_LLD_CUT) && (Charge <= CHARGE_ULD_CUT) && (gEvent[i][j].Overrange == 0))
+	      gHisto[i][Charge]++;
+	    
+	    /* Plot Histogram */
+	    gCurrTime = get_time();
+	    if ((gCurrTime-gPrevHPlotTime) > 1000) {
+	      gPlotDataFile = fopen("PlotData.txt", "w");
+	      for(bin=0; bin<HISTO_NBIN; bin++)
+		fprintf(gPlotDataFile, "%d\n", gHisto[gActiveChannel][bin]);
+	      fclose(gPlotDataFile);
+	      fprintf(gHistPlotFile, "plot 'PlotData.txt' with step\n");
+	      fflush(gHistPlotFile);
+	      gPrevHPlotTime = gCurrTime;
+	    }
+	    
+	    /* Check roll over of time tag */
+	    if (gEvent[i][j].TimeTag < gPrevTimeTag[i])
+	      gETT[i]++;
+	    
+	    gExtendedTimeTag[i] = (gETT[i] << 32) + (uint64_t)(gEvent[i][j].TimeTag);
+	    
+	    
+	    /* Save event to output file */
+	    if (gParams.SaveList) {
+	      fprintf(gListFiles[i], "%16llu %8d\n", gExtendedTimeTag[i], gEvent[i][j].Charge);
+	    }
+	    
+	    /* Plot Waveforms (if enabled) */
+	    if ((i==gActiveChannel) && (gParams.AcqMode == ACQMODE_MIXED) && ((gCurrTime-gPrevWPlotTime) > 300) && (Charge >= CHARGE_LLD_CUT) && (Charge <= CHARGE_ULD_CUT)) {
+	      _CAEN_DGTZ_DecodeDPPWaveforms(&gEvent[i][j], gWaveforms);
+	      gPlotDataFile = fopen("PlotWave.txt", "w");
+	      printf("gWaveforms = %d\n",gWaveforms->Ns);
+	      for(j=0; j<gWaveforms->Ns; j++) {
+		fprintf(gPlotDataFile, "%d ", gWaveforms->Trace1[j]);                 /* samples */
+		fprintf(gPlotDataFile, "%d ", 2000 + 200 *  gWaveforms->DTrace1[j]);  /* gate    */
+		fprintf(gPlotDataFile, "%d ", 1000 + 200 *  gWaveforms->DTrace2[j]);  /* trigger */
+		fprintf(gPlotDataFile, "%d ", 500 + 200 *  gWaveforms->DTrace3[j]);   /* trg hold off */
+		fprintf(gPlotDataFile, "%d\n", 100 + 200 *  gWaveforms->DTrace4[j]);  /* overthreshold */
+	      }
+	      fclose(gPlotDataFile);
+	      
+	      
+	      switch (gAnalogTrace) {
+		case 0:
+		  fprintf(gWavePlotFile, "plot 'PlotWave.txt' u 1 t 'Input' w step, 'PlotWave.txt' u 2 t 'Gate' w step, 'PlotWave.txt' u 3 t 'Trigger' w step, 'PlotWave.txt' u 4 t 'TrgHoldOff' w step, 'PlotWave.txt' u 5 t 'OverThr' w step\n");
+		  break;
+		case 1:
+		  fprintf(gWavePlotFile, "plot 'PlotWave.txt' u 1 t 'Smooth' w step, 'PlotWave.txt' u 2 t 'Gate' w step, 'PlotWave.txt' u 3 t 'Trigger' w step, 'PlotWave.txt' u 4 t 'TrgHoldOff' w step, 'PlotWave.txt' u 5 t 'OverThr' w step\n");
+		  break;
+		case 2:
+		  fprintf(gWavePlotFile, "plot 'PlotWave.txt' u 1 t 'Baseline' w step, 'PlotWave.txt' u 2 t 'Gate' w step, 'PlotWave.txt' u 3 t 'Trigger' w step, 'PlotWave.txt' u 4 t 'TrgHoldOff' w step, 'PlotWave.txt' u 5 t 'OverThr' w step\n");
+		  break;
+		default:
+		  fprintf(gWavePlotFile, "plot 'PlotWave.txt' u 1 t 'Input' w step, 'PlotWave.txt' u 2 t 'Gate' w step, 'PlotWave.txt' u 3 t 'Trigger' w step, 'PlotWave.txt' u 4 t 'TrgHoldOff' w step, 'PlotWave.txt' u 5 t 'OverThr' w step\n");
+		  break;
+	      }
+	      
+	      fflush(gWavePlotFile);
+	      gPrevWPlotTime = gCurrTime;
+	    }
+	    
+	    
+	    gPrevTimeTag[i]   = gEvent[i][j].TimeTag;
+	  }
+	  
+	  
+	  gEvCnt[i]      += NumEvents[i];
+	  if (gToggleTrace) {
+	    
+	    switch (gAnalogTrace) {
+	      case 0:
+		CAEN_DGTZ_WriteRegister(gHandle, 0x8008, 3<<12);
+		break;
+	      case 1:
+		CAEN_DGTZ_WriteRegister(gHandle, 0x8004, 1<<12);
+		CAEN_DGTZ_WriteRegister(gHandle, 0x8008, 1<<13);
+		break;
+	      case 2:
+		CAEN_DGTZ_WriteRegister(gHandle, 0x8008, 1<<12);
+		CAEN_DGTZ_WriteRegister(gHandle, 0x8004, 1<<13);
+		break;
+	      default:
+		CAEN_DGTZ_WriteRegister(gHandle, 0x8004, 3<<12);
+		break;
+	    }
+	    
+	    
+	    gToggleTrace = 0;
+	  }
+	  
+	}
+	
+	gAcqStats.nb += bsize;
+	return 0;
 
 }
 
@@ -611,48 +615,48 @@ int run_acquisition() {
 /*
 ** Prints statistics to console.
 */
-// void print_statistics() {
-//  		long elapsed;
-//         unsigned int i;
-//         uint64_t     PrevEvCnt   = 0;
-//
-//         gCurrTime = get_time();
-//         elapsed = (gCurrTime-gPrevTime);
-//         gAcqStats.gRunElapsedTime = gCurrTime - gRunStartTime;
-// 		if (elapsed>1000) {
-//             uint64_t diff;
-//             gAcqStats.TotEvCnt = 0;
-//             clear_screen();
-//
-//             for(i=0; i < gEquippedChannels; ++i) {
-//                 gAcqStats.TotEvCnt += gEvCnt[i];
-//             }
-//
-//             printf("*********** Global statistics ***************\n");
-//             printf("=============================================\n\n");
-//             printf("Elapsed time         = %d ms\n", gAcqStats.gRunElapsedTime);
-//             printf("Readout Loops        = %d\n", gLoops );
-//             printf("Bytes read           = %d\n", gAcqStats.nb);
-// 			printf("Events               = %lld\n", gAcqStats.TotEvCnt);
-//             printf("Readout Rate         = %.2f MB/s\n\n", (float)gAcqStats.nb / 1024 / (elapsed));
-//
-//
-//             printf("******** Group  %d statistics **************\n\n", grp4stats);
-// 			printf("-- Channel -- Event Rate (KHz) -----\n\n");
-//
-//             for(i=0; i < 8; ++i) {
-//               diff = gEvCnt[grp4stats*8+i]-gEvCntOld[grp4stats*8+i];
-// 			  printf("    %2d      %.2f\n", grp4stats*8+i, (float)(diff) / (elapsed));
-//               gEvCntOld[grp4stats*8+i] = gEvCnt[grp4stats*8+i];
-//             }
-//
-//             gAcqStats.nb        = 0;
-//             gPrevTime  = gCurrTime;
-//             PrevEvCnt = gAcqStats.TotEvCnt;
-//
-// 		}
-//
-// }
+void print_statistics() {
+  long elapsed;
+  unsigned int i;
+  uint64_t     PrevEvCnt   = 0;
+  
+  gCurrTime = get_time();
+  elapsed = (gCurrTime-gPrevTime);
+  gAcqStats.gRunElapsedTime = gCurrTime - gRunStartTime;
+  if (elapsed>1000) {
+    uint64_t diff;
+    gAcqStats.TotEvCnt = 0;
+    clear_screen();
+    
+    for(i=0; i < gEquippedChannels; ++i) {
+      gAcqStats.TotEvCnt += gEvCnt[i];
+    }
+    
+    printf("*********** Global statistics ***************\n");
+    printf("=============================================\n\n");
+    printf("Elapsed time         = %d ms\n", gAcqStats.gRunElapsedTime);
+    printf("Readout Loops        = %d\n", gLoops );
+    printf("Bytes read           = %d\n", gAcqStats.nb);
+    printf("Events               = %lld\n", gAcqStats.TotEvCnt);
+    printf("Readout Rate         = %.2f MB/s\n\n", (float)gAcqStats.nb / 1024 / (elapsed));
+    
+    
+    printf("******** Group  %d statistics **************\n\n", grp4stats);
+    printf("-- Channel -- Event Rate (KHz) -----\n\n");
+    
+    for(i=0; i < 8; ++i) {
+      diff = gEvCnt[grp4stats*8+i]-gEvCntOld[grp4stats*8+i];
+      printf("    %2d      %.2f\n", grp4stats*8+i, (float)(diff) / (elapsed));
+      gEvCntOld[grp4stats*8+i] = gEvCnt[grp4stats*8+i];
+    }
+    
+    gAcqStats.nb        = 0;
+    gPrevTime  = gCurrTime;
+    PrevEvCnt = gAcqStats.TotEvCnt;
+    
+  }
+  
+}
 
 
 /*
@@ -721,7 +725,7 @@ int setup_acquisition(char *fname) {
     ** Set Parameters (default values or read from config file)
     ** ---------------------------------------------------------------------------------------
     */
-	ret = setup_parameters(&gParams, fname);
+    ret = setup_parameters(&gParams, fname);
     if (ret < 0) {
         printf("Error in setting parameters\n");
         return -1;
@@ -795,7 +799,9 @@ int setup_acquisition(char *fname) {
 
     printf("\nConnected to CAEN Digitizer Model %s\n", gBoardInfo.ModelName);
     printf("ROC FPGA Release is %s\n", gBoardInfo.ROC_FirmwareRel);
-    printf("AMC FPGA Release is %s\n\n", gBoardInfo.AMC_FirmwareRel);
+    printf("AMC FPGA Release is %s\n", gBoardInfo.AMC_FirmwareRel);    
+    printf("VME Handle is %s\n", gBoardInfo.VMEHandle);
+    printf("Serial Number is %d\n\n", gBoardInfo.SerialNumber);
 
     gEquippedChannels = gBoardInfo.Channels * 8;
     gEquippedGroups = gEquippedChannels/8;
@@ -882,7 +888,7 @@ int setup_acquisition(char *fname) {
 	      if (gListFiles[i] == NULL) gListFiles[i] = fopen(filename, "w");
        }
 
-	printf("\nPress a key to start the acquisition\n");
+	//printf("\nPress a key to start the acquisition\n");
 	// getch();
     // ret = CAEN_DGTZ_SWStartAcquisition(gHandle);
 	// printf("Acquisition started\n");
@@ -895,40 +901,40 @@ int setup_acquisition(char *fname) {
 ** Returns 0 on success; -1 in case of any error detected or when exit key is pressed.
 */
 // int check_user_input() {
-//         int c;
-//         unsigned int i;
-//
-//         /* check if any key has been pressed */
-//         if (kbhit()) {
-//           c = getch();
-// 		  if (c=='q') return -1;
-//           if (c=='t') gSWTrigger = 1;
-//           if (c=='0') {gAnalogTrace = 0; gToggleTrace = 1;}
-//           if (c=='1') {gAnalogTrace = 1; gToggleTrace = 1;}
-//           if (c=='2') {gAnalogTrace = 2; gToggleTrace = 1;}
-// 		  if (c=='l') gParams.SaveList = 1;
-//           if (c=='T') gSWTrigger = gSWTrigger ^ 2;
-// 		  if (c=='r') {
-//                          for(i= 0 ; i < gEquippedChannels; ++i) {
-// 	                       memset(gHisto[i], 0, HISTO_NBIN * sizeof(uint32_t));
-//                            gEvCnt[i] = 0;
-//                          }
-//                          gAcqStats.nb = 0;
-//                          gLoops = 0;
-//                       }
-// 		  if (c=='R') {
-//                          gRestart = 1;
-//                       }
-//
-// 		  if (c=='c') {
-// 		  	           printf("Channel = ");
-// 		  	           scanf("%d", &gActiveChannel);
-// 		              }
-//           if (c=='g') {
-// 		  	           printf("Group = ");
-// 		  	           scanf("%d", &grp4stats);
-// 		              }
-//         } /*  if (kbhit()) */
-//
-//         return 0;
+//   int c;
+//   unsigned int i;
+//   
+//   /* check if any key has been pressed */
+//   if (kbhit()) {
+//     c = getch();
+//     if (c=='q') return -1;
+//     if (c=='t') gSWTrigger = 1;
+//     if (c=='0') {gAnalogTrace = 0; gToggleTrace = 1;}
+//     if (c=='1') {gAnalogTrace = 1; gToggleTrace = 1;}
+//     if (c=='2') {gAnalogTrace = 2; gToggleTrace = 1;}
+//     if (c=='l') gParams.SaveList = 1;
+//     if (c=='T') gSWTrigger = gSWTrigger ^ 2;
+//     if (c=='r') {
+//       for(i= 0 ; i < gEquippedChannels; ++i) {
+// 	memset(gHisto[i], 0, HISTO_NBIN * sizeof(uint32_t));
+// 	gEvCnt[i] = 0;
+//       }
+//       gAcqStats.nb = 0;
+//       gLoops = 0;
+//     }
+//     if (c=='R') {
+//       gRestart = 1;
+//     }
+//     
+//     if (c=='c') {
+//       printf("Channel = ");
+//       scanf("%d", &gActiveChannel);
+//     }
+//     if (c=='g') {
+//       printf("Group = ");
+//       scanf("%d", &grp4stats);
+//     }
+//   } /*  if (kbhit()) */
+//   
+//   return 0;
 // }

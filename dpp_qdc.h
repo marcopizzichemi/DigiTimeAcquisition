@@ -143,6 +143,7 @@ extern FILE *       gWavePlotFile;                             /* Source file fo
 ****************************************************************************************************/
 
 /* readout_demo functions prototypes */
+extern long get_time();
 int  setup_acquisition(char* fname);
 int  run_acquisition();
 void print_statistics();
